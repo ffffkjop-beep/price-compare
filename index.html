@@ -1,231 +1,154 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>比价小助手</title>
-<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiYmlqaWF4emgiLCJzaG9ydF9uYW1lIjoiYmlqaWF4emgiLCJzdGFydF91cmwiOiIiLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjZTVlN2VhIiwidGhlbWVfY29sb3IiOiIjMjU2M2ViIn0=">
-<meta name="theme-color" content="#2563eb">
-<style>
-*{box-sizing:border-box;font-family:system-ui,sans-serif;margin:0;padding:0}
-body{background:#f5f7fa;padding:14px;max-width:100%;margin:0 auto}
-.card{background:#fff;padding:16px;border-radius:12px;box-shadow:0 2px 10px #00000012;margin-bottom:14px}
-h2{text-align:center;color:#222;margin-bottom:14px;font-size:18px}
-.ctrl-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
-button{padding:8px 10px;border:none;border-radius:8px;cursor:pointer;font-size:14px}
-#addRow{background:#2563eb;color:#fff}
-#clearAll{background:#ef4444;color:#fff}
-#export{background:#10b981;color:#fff}
-#ocrBtn{background:#7c3aed;color:#fff}
-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12px}
-th,td{border:1px solid #e5e7eb;padding:6px;text-align:center}
-th{background:#f3f4f6}
-input{width:100%;padding:6px;border:1px solid #ddd;border-radius:5px;font-size:12px}
-.best{background:#dcfce7 !important;color:#166534;font-weight:bold}
-.del{background:#6b7280;color:#fff}
-.tip{margin-top:12px;color:#555;font-size:12px;line-height:1.4}
-#ocrResult{margin-top:8px;padding:8px;background:#f8f9fa;border-radius:6px;white-space:pre-wrap;min-height:60px;font-size:12px}
-#fileInput{display:none}
-</style>
-</head>
-<body>
-<div class="card">
-    <h2>🖼️ 图片文字识别OCR</h2>
-    <button id="ocrBtn">上传截图 / 拍照识别</button>
-    <input type="file" id="fileInput" accept="image/*" capture="environment">
-    <div id="ocrResult">识别文字将显示在这里，复制填入表格</div>
-    <div class="tip">手机可以直接拍照识别，尽量拍清楚价格和规格</div>
-</div>
-
-<div class="card">
-    <h2>💰 比价｜优惠券/满减/运费（自动保存）</h2>
-    <div class="ctrl-bar">
-        <button id="addRow">➕ 添加</button>
-        <button id="clearAll">🗑️ 清空全部</button>
-        <button id="export">📋 导出</button>
-    </div>
-    <table>
-        <thead>
-            <tr>
-                <th>平台</th>
-                <th>名称</th>
-                <th>原价</th>
-                <th>券</th>
-                <th>满减</th>
-                <th>运费</th>
-                <th>实付</th>
-                <th>单位</th>
-                <th>数量</th>
-                <th>单价</th>
-                <th>删</th>
-            </tr>
-        </thead>
-        <tbody id="tableBody">
-        </tbody>
-    </table>
-    <div class="tip">公式：实付=原价-优惠券-满减+运费；绿色=性价比最高；数据自动保存在本机</div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script>
-if('serviceWorker' in navigator){
-  const swCode = `self.addEventListener('install',e=>self.skipWaiting());self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>new Response('offline'))))`;
-  const blob = new Blob([swCode],{type:'application/javascript'});
-  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(()=>{});
+!DOCTYPE html
+html lang=zh-CN
+head
+meta charset=UTF-8
+meta name=viewport content=width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no
+title比价小助手title
+link rel=manifest href=dataapplicationjson;base64,eyJuYW1lIjoiYmlqaWEiLCJzaG9ydF9uYW1lIjoiYmlqaWEiLCJzdGFydF91cmwiOiIvIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiI2ZmZiIsInRoZW1lX2NvbG9yIjoiIzM1ODhiZiJ9
+style
+{box-sizingborder-box;margin0;padding0;}
+body{font-familysystem-ui,sans-serif;background#f5f7fa;padding14px;color#222;}
+ 重点修复：全局禁止选中，但输入框放开 
+{
+  -webkit-user-selectnone;
+  user-selectnone;
 }
-
-const STORAGE_KEY = "price_compare_data";
-const tbody = document.getElementById('tableBody');
-const addBtn = document.getElementById('addRow');
-const clearBtn = document.getElementById('clearAll');
-const exportBtn = document.getElementById('export');
-
-const ocrBtn = document.getElementById('ocrBtn');
-const fileInput = document.getElementById('fileInput');
-const ocrResult = document.getElementById('ocrResult');
-
-ocrBtn.onclick = ()=>fileInput.click();
-fileInput.onchange = async (e)=>{
-    const file = e.target.files[0];
-    if(!file) return;
-    ocrResult.textContent = "识别中...";
-    try{
-        const result = await Tesseract.recognize(file, 'chi_sim+eng');
-        ocrResult.textContent = result.data.text;
-    }catch(err){
-        ocrResult.textContent = "识别失败："+err.message;
-    }
+input,textarea{
+  -webkit-user-selecttext !important;
+  user-selecttext !important;
+  font-size16px !important; iOS必须≥16px，不然双击缩放+键盘异常 
 }
+.card{background#fff;border-radius12px;padding16px;margin-bottom14px;box-shadow0 2px 8px #00000012;}
+.row{displaygrid;grid-template-columns1fr 1fr;gap10px;margin-bottom10px;}
+.row3{grid-template-columns1fr 1fr 1fr;}
+label{displayblock;font-size13px;color#555;margin-bottom4px;}
+input{width100%;padding10px;border1px solid #ddd;border-radius8px;outlinenone;}
+inputfocus{border-color#358bbf;}
+.btns{displayflex;gap10px;margin12px 0;flex-wrapwrap;}
+button{flex1;padding11px;bordernone;border-radius8px;background#358bbf;color#fff;font-size15px;}
+button.del{background#e74c3c;}
+#list{margin-top10px;}
+.item{border1px solid #eee;border-radius10px;padding12px;margin-bottom10px;positionrelative;}
+.best{border-color#27ae60;background#f0fff4;}
+.best-tag{positionabsolute;top8px;right8px;background#27ae60;color#fff;font-size12px;padding2px 6px;border-radius4px;}
+.res-line{font-size14px;margin4px 0;}
+#export{background#27ae60;}
+style
+head
+body
+div class=card
+h3 style=margin-bottom12px新增商品h3
+div class=row
+  div
+    label商品名称label
+    input id=name placeholder=例如：洗衣液
+  div
+  div
+    label平台来源label
+    input id=site placeholder=淘宝京东
+  div
+div
+div class=row
+  div
+    label标价label
+    input id=price type=number step=0.01 placeholder=原价
+  div
+  div
+    label数量规格label
+    input id=num type=number step=0.01 value=1
+  div
+div
+div class=row row3
+  div
+    label运费label
+    input id=freight type=number step=0.01 value=0
+  div
+  div
+    label优惠券label
+    input id=coupon type=number step=0.01 value=0
+  div
+  div
+    label满减label
+    input id=fullcut type=number step=0.01 value=0
+  div
+div
+div class=btns
+  button onclick=addItem()添加button
+  button id=export onclick=exportData()导出button
+  button class=del onclick=clearAll()清空全部button
+div
+div
 
-// 保存数据到本地
-function saveData(){
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    const data = [];
-    rows.forEach(r=>{
-        data.push({
-            platform: r.querySelector('.platform').value,
-            name: r.querySelector('.name').value,
-            price: r.querySelector('.price').value,
-            coupon: r.querySelector('.coupon').value,
-            fullReduce: r.querySelector('.fullReduce').value,
-            freight: r.querySelector('.freight').value,
-            unit: r.querySelector('.unit').value,
-            count: r.querySelector('.count').value
-        })
-    })
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+div id=listdiv
+
+script
+let data = JSON.parse(localStorage.getItem('bjdata'))  [];
+function save(){localStorage.setItem('bjdata',JSON.stringify(data));}
+function calc(item){
+  const realPay = Number(item.price)+Number(item.freight)-Number(item.coupon)-Number(item.fullcut);
+  const unit = realPay  Number(item.num);
+  return {realPay,unit};
 }
-
-// 读取本地数据
-function loadData(){
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return null;
-    try{
-        return JSON.parse(raw);
-    }catch(e){
-        return null;
-    }
-}
-
-function addRow(platform='',name='',price='',coupon='0',fullReduce='0',freight='0',unit='',num=''){
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-        <td><input class="platform" placeholder="平台" value="${platform}"></td>
-        <td><input class="name" placeholder="商品" value="${name}"></td>
-        <td><input class="price" type="number" step="0.01" value="${price}"></td>
-        <td><input class="coupon" type="number" step="0.01" value="${coupon}"></td>
-        <td><input class="fullReduce" type="number" step="0.01" value="${fullReduce}"></td>
-        <td><input class="freight" type="number" step="0.01" value="${freight}"></td>
-        <td class="payTotal">-</td>
-        <td><input class="unit" placeholder="g" value="${unit}"></td>
-        <td><input class="count" type="number" step="0.01" value="${num}"></td>
-        <td class="unitPrice">-</td>
-        <td><button class="del">×</button></td>
+function render(){
+  const wrap = document.getElementById('list');
+  wrap.innerHTML = '';
+  if(data.length===0) return;
+  const units = data.map(i=calc(i).unit);
+  const min = Math.min(...units);
+  data.forEach((item,idx)={
+    const c = calc(item);
+    const isBest = Math.abs(c.unit - min)  0.0001;
+    const div = document.createElement('div');
+    div.className = 'item '+(isBest'best''');
+    div.innerHTML = `
+      ${isBest'span class=best-tag最优span'''}
+      div class=res-lineb${item.name}b · ${item.site}div
+      div class=res-line标价：${item.price}｜运费：${item.freight}div
+      div class=res-line券-${item.coupon}｜满减-${item.fullcut}div
+      div class=res-lineb实付：${c.realPay.toFixed(2)}｜单价：${c.unit.toFixed(2)}bdiv
+      div class=btns style=margin-top8px
+        button onclick=del(${idx}) class=del删除button
+      div
     `;
-    tbody.appendChild(tr);
-    tr.querySelector('.del').onclick=()=>{
-        tr.remove();
-        calcAll();
-        saveData();
-    };
-    tr.querySelectorAll('input').forEach(i=>i.oninput=()=>{
-        calcAll();
-        saveData();
-    });
-    calcAll();
+    wrap.appendChild(div);
+  })
 }
-
-function calcAll(){
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    let list = [];
-    rows.forEach(r=>r.classList.remove('best'));
-    rows.forEach(r=>{
-        const price = Number(r.querySelector('.price').value) || 0;
-        const coupon = Number(r.querySelector('.coupon').value) || 0;
-        const fullReduce = Number(r.querySelector('.fullReduce').value) || 0;
-        const freight = Number(r.querySelector('.freight').value) || 0;
-        const cnt = Number(r.querySelector('.count').value) || 0;
-        const payDom = r.querySelector('.payTotal');
-        const upDom = r.querySelector('.unitPrice');
-        const payTotal = price - coupon - fullReduce + freight;
-        payDom.textContent = payTotal.toFixed(2);
-        if(isNaN(payTotal) || cnt <= 0 || payTotal < 0){
-            upDom.textContent = '-';
-            return;
-        }
-        const unitPrice = payTotal / cnt;
-        upDom.textContent = unitPrice.toFixed(3);
-        list.push({dom:r,val:unitPrice});
-    })
-    if(list.length>0){
-        const min = list.sort((a,b)=>a.val-b.val)[0];
-        min.dom.classList.add('best');
-    }
+function addItem(){
+  const o = {
+    namedocument.getElementById('name').value.trim(),
+    sitedocument.getElementById('site').value.trim(),
+    priceNumber(document.getElementById('price').value0),
+    numNumber(document.getElementById('num').value1),
+    freightNumber(document.getElementById('freight').value0),
+    couponNumber(document.getElementById('coupon').value0),
+    fullcutNumber(document.getElementById('fullcut').value0),
+  }
+  if(!o.name){alert('请填商品名称');return;}
+  data.push(o);
+  save();render();
+  清空输入框
+  document.getElementById('name').value='';
+  document.getElementById('site').value='';
+  document.getElementById('price').value='';
+  document.getElementById('num').value='1';
+  document.getElementById('freight').value='0';
+  document.getElementById('coupon').value='0';
+  document.getElementById('fullcut').value='0';
 }
-
-function exportText(){
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    let text = "【比价记录】\n";
-    rows.forEach(r=>{
-        const platform = r.querySelector('.platform').value;
-        const name = r.querySelector('.name').value;
-        const price = r.querySelector('.price').value;
-        const coupon = r.querySelector('.coupon').value;
-        const fullReduce = r.querySelector('.fullReduce').value;
-        const freight = r.querySelector('.freight').value;
-        const pay = r.querySelector('.payTotal').textContent;
-        const unit = r.querySelector('.unit').value;
-        const cnt = r.querySelector('.count').value;
-        const up = r.querySelector('.unitPrice').textContent;
-        text += `【${platform}】${name}｜原价${price}｜券${coupon}｜满减${fullReduce}｜运费${freight}｜实付${pay}｜${cnt}${unit}｜单位价：${up}\n`;
-    })
-    navigator.clipboard.writeText(text).then(()=>alert('已复制'));
+function del(i){
+  data.splice(i,1);save();render();
 }
-
-addBtn.onclick = ()=>{
-    addRow();
-    saveData();
-};
-clearBtn.onclick = ()=>{
-    if(confirm('确定清空全部记录？不可恢复！')){
-        tbody.innerHTML='';
-        localStorage.removeItem(STORAGE_KEY);
-    }
+function clearAll(){
+  if(confirm('确定清空所有记录？')){data=[];save();render();}
 }
-exportBtn.onclick = exportText;
-
-// 加载历史数据
-const history = loadData();
-if(history && history.length>0){
-    history.forEach(item=>{
-        addRow(item.platform,item.name,item.price,item.coupon,item.fullReduce,item.freight,item.unit,item.count);
-    })
-}else{
-    // 默认示例（第一次打开才有）
-    addRow('京东','洗衣液','49.9','5','0','0','kg','3');
-    addRow('拼多多','洗衣液','45','3','0','6','kg','2.5');
-    addRow('淘宝','洗衣液','55','0','10','0','kg','4');
+function exportData(){
+  const blob = new Blob([JSON.stringify(data,null,2)],{type'applicationjson'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url;a.download='比价记录.json';a.click();
+  URL.revokeObjectURL(url);
 }
-</script>
-</body>
-</html>
+render();
+script
+body
+html
